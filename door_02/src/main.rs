@@ -22,12 +22,11 @@ fn main() {
                 .map(|num| num.parse().unwrap())
                 .collect();
 
-            let (result, index) = check(&line);
+            let result = check(&line);
 
 
             return if !result {
-                line.remove(index);
-                let (result, index) = check(&line);
+                let result = check_all(line);
                 result
             } else {
                 result
@@ -40,7 +39,7 @@ fn main() {
 }
 
 
-fn check(line: &[i32]) -> (bool, usize) {
+fn check(line: &[i32]) -> bool {
 
 
     let mut val_one = line.get(0).unwrap();
@@ -59,7 +58,7 @@ fn check(line: &[i32]) -> (bool, usize) {
         let mut distance = val_one.sub(val_two).abs();
 
         if !(distance > 0 && distance <= 3) {
-            return (false, index);
+            return false;
         }
 
         let direction = if val_one.sub(val_two) > 0 {
@@ -73,13 +72,26 @@ fn check(line: &[i32]) -> (bool, usize) {
         }
 
         if old_direction != direction {
-            return (false, index);
+            return false;
         }
 
         old_direction = direction.clone();
     }
 
-    (true, 0usize)
+    true
+}
+
+
+fn check_all(line: Vec<i32>) -> bool {
+    for index in 0..line.len() {
+        let mut test_line: Vec<i32> = line.clone();
+        test_line.remove(index);
+        if check(&test_line) {
+            return true;
+        }
+    }
+
+    false
 }
 
 
@@ -104,7 +116,7 @@ mod tests{
                 .split(" ")
                 .map(|num| num.parse().unwrap())
                 .collect();
-            let (result, index) = check(&val);
+            let result = check(&val);
 
             println!("check result: {result:?}");
             assert_eq!(*expect, result);
@@ -133,14 +145,13 @@ mod tests{
             let result = check(&val);
 
 
-            if !result.0{
-                val.remove(result.1);
-                let result = check(&val);
+            if !result{
+                let result = check_all(val);
 
                 println!("check result: {result:?}");
-                assert_eq!(*expect, result.0);
+                assert_eq!(*expect, result);
             }else {
-                assert!(result.0)
+                assert!(result)
             }
 
 
