@@ -1,6 +1,6 @@
 use common::read_lines;
 use std::io::BufRead;
-use std::ops::AddAssign;
+use std::ops::{AddAssign, Sub};
 
 fn main() {
     let state = create_state("door_04/input.txt");
@@ -22,11 +22,6 @@ struct Position {
 struct Direction {
     pub x: i32,
     pub y: i32,
-}
-
-struct Mask {
-    center: (i32, i32),
-    data: Vec<Vec<char>>,
 }
 
 impl Letter {
@@ -54,14 +49,10 @@ fn create_state(path: &str) -> Vec<Vec<char>> {
 
 fn count_xmases(state: &Vec<Vec<char>>) -> usize {
     let positions = vec![
-        Direction { x: 0, y: -1 },
-        Direction { x: 1, y: -1 },
-        Direction { x: 1, y: 0 },
         Direction { x: 1, y: 1 },
-        Direction { x: 0, y: 1 },
-        Direction { x: -1, y: 1 },
-        Direction { x: -1, y: 0 },
         Direction { x: -1, y: -1 },
+        Direction { x: -1, y: 1 },
+        Direction { x: 1, y: -1 },
     ];
 
     let mut result = 0;
@@ -69,13 +60,24 @@ fn count_xmases(state: &Vec<Vec<char>>) -> usize {
         let mut y = y;
         for (x, char) in line.iter().enumerate() {
             let char = (*char).to_ascii_uppercase();
-            if char == 'X' {
+            if char == 'A' {
+                let one = {};
+
                 let x = x as i32;
                 let y = y as i32;
-                let p = Position { x, y };
+                let mut count = 0;
                 for position in &positions {
-                    let count = check(&state, &p, position);
-                    result.add_assign(count);
+                    let x = x + (position.x * -1);
+                    let y = y + (position.y * -1);
+
+                    let p = Position { x, y };
+
+                    let c = check(&state, &p, position, "MAS");
+                    count.add_assign(c);
+                }
+
+                if count == 2 {
+                    result.add_assign(1);
                 }
             }
         }
@@ -85,10 +87,10 @@ fn count_xmases(state: &Vec<Vec<char>>) -> usize {
     result
 }
 
-fn check(state: &Vec<Vec<char>>, index: &Position, direction: &Direction) -> usize {
+fn check(state: &Vec<Vec<char>>, index: &Position, direction: &Direction, word: &str) -> usize {
     let mut x = index.x;
     let mut y = index.y;
-    for letter in "XMAS".chars() {
+    for letter in word.chars() {
         let line = state.get(y as usize);
         if line == None {
             return 0;
