@@ -1,84 +1,161 @@
+use common::read_lines;
+use std::collections::HashSet;
+
 fn main() {
-    let path = "door_06/input.txt";
-    let lines = std::fs::read_to_string(path).unwrap();
+    let (mut start_map, guard) = read_file("door_06/input.txt");
+    let mut start_guard = guard.expect("Some guard");
 
-    part_2(lines)
-}
+    let mut stuck_counter = 0;
 
-#[derive(Clone, Copy)]
-enum Cell {
-    Empty,
-    Visited(Direction),
-    Obstacle,
-    HitObstacle(HitDirections),
-    Guard(Direction),
-}
+    for y in (0..start_map.height) {
+        for x in (0..start_map.width) {
+            let mut map = start_map.clone();
+            let mut guard = start_guard.clone();
 
-#[derive(Copy, Clone, PartialEq)]
-struct HitDirections {
-    from_left: bool,
-    from_right: bool,
-    from_above: bool,
-    from_below: bool,
-}
-
-impl HitDirections {
-    // Returns true if hit had occurred before.
-    fn hit(&mut self, direction: Direction) -> bool {
-        match direction {
-            Direction::Up => {
-                if self.from_below {
-                    return true;
-                }
-                self.from_below = true;
+            if x == guard.pos.x && y == guard.pos.y {
+                continue;
             }
-            Direction::Right => {
-                if self.from_left {
-                    return true;
+
+            {
+                let field = map.get_field_mut(x, y).unwrap();
+                match field {
+                    Field::Cell(visited) => *field = Field::Obstacle(None),
+                    Field::Obstacle(_) => {
+                        continue;
+                    }
                 }
-                self.from_left = true;
             }
-            Direction::Down => {
-                if self.from_above {
-                    return true;
+
+            while guard.is_in_map(&map) {
+                //print(&map);
+
+                if update(&mut map, &mut guard) {
+                    stuck_counter += 1;
+                    break;
                 }
-                self.from_above = true;
-            }
-            Direction::Left => {
-                if self.from_right {
-                    return true;
-                }
-                self.from_right = true;
             }
         }
-        false
     }
-    fn new(direction: Direction) -> Self {
-        let mut ret = Self {
-            from_left: false,
-            from_right: false,
-            from_above: false,
-            from_below: false,
-        };
-        match direction {
-            Direction::Up => {
-                ret.from_below = true;
-            }
-            Direction::Right => {
-                ret.from_left = true;
-            }
-            Direction::Down => {
-                ret.from_above = true;
-            }
-            Direction::Left => {
-                ret.from_right = true;
+
+    println!("stuck_counter: {}", stuck_counter);
+}
+
+fn check_ob_pos(ob_pos: Position, mut map: Map, mut guard: Guard) {}
+
+fn print(map: &Map) {
+    for y in &map.map {
+        let mut row = String::new();
+        for x in y {
+            match x {
+                Field::Cell(v) => {
+                    if *v {
+                        row.push('x')
+                    } else {
+                        row.push('.')
+                    }
+                }
+                Field::Obstacle(_) => row.push('#'),
             }
         }
-        ret
+        println!("{}", row);
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+fn update(map: &mut Map, guard: &mut Guard) -> bool {
+    let next_pos = guard.get_next_position();
+    if map.is_out_of_bounds(&next_pos) {
+        guard.move_to_next()
+    } else {
+        let next_field = &mut map.get_field_mut(next_pos.x, next_pos.y).unwrap();
+
+        match next_field {
+            Field::Cell(visited) => {
+                guard.move_to_next();
+                *visited = true;
+            }
+            Field::Obstacle(hit_from) => {
+                let dir = guard.direction.clone();
+                match hit_from {
+                    None => *hit_from = Some(dir),
+                    Some(direction) => {
+                        if *direction == dir {
+                            return true;
+                        } else {
+                            *hit_from = Some(dir)
+                        }
+                    }
+                }
+
+                guard.rotate_right();
+            }
+        }
+    }
+
+    false
+}
+
+#[derive(Clone)]
+struct Map {
+    pub map: Vec<Vec<Field>>,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl Map {
+    pub(crate) fn get_visited_fields(&self) -> usize {
+        let mut count = 0;
+
+        self.map.iter().for_each(|row| {
+            row.iter().for_each(|field| {
+                if let Field::Cell(true) = field {
+                    count += 1;
+                }
+            })
+        });
+
+        count
+    }
+}
+
+impl Map {
+    fn new(map: Vec<Vec<Field>>) -> Self {
+        let height = map.len() as i32;
+        let width = map.get(0).unwrap().len() as i32;
+        Map { map, width, height }
+    }
+
+    fn get_field_mut(&mut self, x: i32, y: i32) -> Option<&mut Field> {
+        let mut rows: &mut Vec<Field> = self.map.get_mut(y as usize).expect("expect row");
+        rows.get_mut(x as usize)
+    }
+
+    fn is_out_of_bounds(&self, pos: &Position) -> bool {
+        if pos.x >= 0 && pos.x < self.width && pos.y >= 0 && pos.y < self.height {
+            return false;
+        }
+
+        true
+    }
+}
+
+#[derive(Clone)]
+enum Field {
+    Cell(bool),
+    Obstacle(Option<Direction>),
+}
+
+#[derive(Clone, PartialEq, PartialOrd, Eq, Hash)]
+struct Position {
+    pub x: i32,
+    pub y: i32,
+}
+
+struct Dir {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Clone, PartialEq, PartialOrd, Eq, Hash)]
 enum Direction {
     Up,
     Right,
@@ -86,235 +163,106 @@ enum Direction {
     Left,
 }
 
-enum NextMap {
-    InProgress(Vec<Vec<Cell>>),
-    Finished(FinishedMap),
-}
-
-enum FinishedMap {
-    Exited(Vec<Vec<Cell>>),
-    Loop(Vec<Vec<Cell>>),
-}
-
-impl NextMap {
-    fn take_and_is_finished(self) -> (Vec<Vec<Cell>>, bool) {
+impl Direction {
+    pub fn rotate_right(&mut self) {
         match self {
-            NextMap::InProgress(vec) => (vec, false),
-            NextMap::Finished(f) => match f {
-                FinishedMap::Exited(vec) => (vec, true),
-                FinishedMap::Loop(vec) => (vec, true),
-            },
+            Direction::Up => *self = Self::Right,
+            Direction::Right => *self = Self::Down,
+            Direction::Down => *self = Self::Left,
+            Direction::Left => *self = Self::Up,
         }
     }
 }
 
-fn turn(d: &Direction) -> Direction {
-    match d {
-        Direction::Up => Direction::Right,
-        Direction::Right => Direction::Down,
-        Direction::Down => Direction::Left,
-        Direction::Left => Direction::Up,
-    }
+#[derive(Clone)]
+struct Guard {
+    pub start_pos: Position,
+    pub pos: Position,
+    pub direction: Direction,
 }
 
-fn cell_from_char(c: char) -> Cell {
-    match c {
-        '.' => Cell::Empty,
-        '#' => Cell::Obstacle,
-        '>' => Cell::Guard(Direction::Right),
-        'v' => Cell::Guard(Direction::Down),
-        '<' => Cell::Guard(Direction::Left),
-        '^' => Cell::Guard(Direction::Up),
-        _ => panic!(),
-    }
-}
-
-fn char_from_cell(c: &Cell) -> char {
-    match c {
-        Cell::Empty => '.',
-        Cell::Obstacle => '#',
-        Cell::HitObstacle { .. } => '@',
-        Cell::Guard(Direction::Right) => '>',
-        Cell::Guard(Direction::Down) => 'v',
-        Cell::Guard(Direction::Left) => '<',
-        Cell::Guard(Direction::Up) => '^',
-        Cell::Visited(Direction::Right) => '>',
-        Cell::Visited(Direction::Down) => 'v',
-        Cell::Visited(Direction::Left) => '<',
-        Cell::Visited(Direction::Up) => '^',
-    }
-}
-
-fn text_to_map(text: &str) -> Vec<Vec<Cell>> {
-    text.lines()
-        .map(|line| line.chars().map(cell_from_char).collect())
-        .collect()
-}
-
-fn print_map(map: &Vec<Vec<Cell>>) {
-    for row in map {
-        for cell in row {
-            print!("{}", char_from_cell(cell));
-        }
-        println!();
-    }
-}
-
-/// Returns the next map iteration.
-fn next_map(mut map: Vec<Vec<Cell>>) -> NextMap {
-    let mut guard_details = None;
-    // Find the guard and their direction.
-    'outer: for (row_idx, row) in map.iter().enumerate() {
-        for (col_idx, cell) in row.iter().enumerate() {
-            if let Cell::Guard(direction) = cell {
-                guard_details = Some((*direction, row_idx, col_idx));
-                break 'outer;
+impl Guard {
+    pub(crate) fn get_next_position(&self) -> Position {
+        let mut current_x = self.pos.x;
+        let mut current_y = self.pos.y;
+        match &self.direction {
+            Direction::Up => {
+                current_y -= 1;
+            }
+            Direction::Down => {
+                current_y += 1;
+            }
+            Direction::Right => {
+                current_x += 1;
+            }
+            Direction::Left => {
+                current_x -= 1;
             }
         }
+        Position {
+            x: current_x,
+            y: current_y,
+        }
     }
-    let (direction, row_idx, col_idx) = guard_details.unwrap();
-    // Set the previous guard location to Visited.
-    map[row_idx][col_idx] = Cell::Visited(direction);
-    // Get the next grid location - if it's out of range, we are finished.
-    let (Some(next_row_idx), Some(next_col_idx)) = (match direction {
-        Direction::Up => (row_idx.checked_sub(1), Some(col_idx)),
-        Direction::Right => (Some(row_idx), Some(col_idx + 1)),
-        Direction::Down => (Some(row_idx + 1), Some(col_idx)),
-        Direction::Left => (Some(row_idx), col_idx.checked_sub(1)),
-    }) else {
-        return NextMap::Finished(FinishedMap::Exited(map));
-    };
-    if next_row_idx >= map.len() || next_col_idx >= map[0].len() {
-        return NextMap::Finished(FinishedMap::Exited(map));
-    };
-    // Move the guard to the next location, and if we hit an obstacle, add a hit
-    // marker.
-    match &map[next_row_idx][next_col_idx] {
-        Cell::Empty => map[next_row_idx][next_col_idx] = Cell::Guard(direction),
-        Cell::Visited(_) => map[next_row_idx][next_col_idx] = Cell::Guard(direction),
-        Cell::Obstacle => {
-            map[next_row_idx][next_col_idx] = Cell::HitObstacle(HitDirections::new(direction));
-            map[row_idx][col_idx] = Cell::Guard(turn(&direction));
-        }
-        Cell::HitObstacle(mut directions) => {
-            if directions.hit(direction) {
-                // A loop is recognised when we hit an obstacle in the same location we had hit
-                // it previously.
-                return NextMap::Finished(FinishedMap::Loop(map));
-            }
-            map[next_row_idx][next_col_idx] = Cell::HitObstacle(directions);
-            map[row_idx][col_idx] = Cell::Guard(turn(&direction));
-        }
-        Cell::Guard { .. } => unreachable!(),
-    };
-    NextMap::InProgress(map)
-}
 
-fn get_last_map(mut map: Vec<Vec<Cell>>) -> FinishedMap {
-    loop {
-        map = match next_map(map) {
-            NextMap::InProgress(vec) => vec,
-            NextMap::Finished(finished_map) => return finished_map,
-        }
+    pub(crate) fn get_current_pos(&self) -> Position {
+        self.pos.clone()
+    }
+
+    pub fn move_to_next(&mut self) {
+        let next = self.get_next_position();
+        self.pos = next;
+    }
+
+    pub fn rotate_right(&mut self) {
+        self.direction.rotate_right();
+    }
+
+    pub fn is_in_map(&self, map: &Map) -> bool {
+        !map.is_out_of_bounds(&self.pos)
     }
 }
 
-fn count_locations(s: &str) -> usize {
-    let mut map = text_to_map(s);
-    loop {
-        let is_finished;
-        (map, is_finished) = next_map(map).take_and_is_finished();
-        if is_finished {
-            break;
+impl Guard {
+    fn new(x: i32, y: i32, direction: Direction) -> Self {
+        let pos = Position { x, y };
+        let start_pos = Position { x, y };
+        let mut path = HashSet::with_capacity(10);
+        path.insert((Position { x, y }, Direction::Up));
+        Self {
+            start_pos,
+            pos,
+            direction,
         }
     }
-    print_map(&map);
-    let mut counter = 0;
-    for row in map {
-        for cell in row {
-            if matches!(cell, Cell::Visited { .. }) {
-                counter += 1;
-            }
-        }
+
+    fn reset(&mut self) {
+        self.pos = Position {
+            x: self.start_pos.x,
+            y: self.start_pos.y,
+        };
     }
-    counter
 }
 
-fn count_obstacles_that_cause_loops(s: &str) -> usize {
-    let (tx, rx) = std::sync::mpsc::channel();
-    let map = text_to_map(s);
-    // Run an iteration first to see where the guard visit. We only need to place
-    // obstacles on locations that have been visited, so this saves some time.
-    let FinishedMap::Exited(exited_map) = get_last_map(map.clone()) else {
-        panic!("Initial input shouldn't loop");
-    };
-    for (row_idx, row) in exited_map.iter().enumerate() {
-        for (col_idx, cell) in row.iter().enumerate() {
-            if !matches!(cell, Cell::Visited(_)) {
-                continue;
-            }
-            let mut test_map = map.clone();
-            let tx = tx.clone();
-            std::thread::spawn(move || {
-                test_map[row_idx][col_idx] = Cell::Obstacle;
-                println!("Trying location [{col_idx}, {row_idx}]");
-                match get_last_map(test_map) {
-                    FinishedMap::Exited(_) => (),
-                    FinishedMap::Loop(_) => tx.send(1).unwrap(),
+fn read_file(path: &str) -> (Map, Option<Guard>) {
+    let mut map: Vec<Vec<Field>> = Vec::new();
+    let mut guard: Option<Guard> = None;
+    let lines = read_lines(path).expect(&format!("Failed to read {}", path));
+    for (y, line) in lines.enumerate() {
+        let line = line.expect("Failed to read line");
+        let mut l = Vec::new();
+        for (x, field) in line.chars().enumerate() {
+            match field {
+                '#' => l.push(Field::Obstacle(None)),
+                '^' => {
+                    l.push(Field::Cell(true));
+                    guard = Some(Guard::new(x as i32, y as i32, Direction::Up))
                 }
-            });
+                _ => l.push(Field::Cell(false)),
+            }
         }
-    }
-    drop(tx);
-    let mut counter = 0;
-    while rx.recv().is_ok() {
-        counter += 1;
-    }
-    counter
-}
-
-pub(crate) fn part_1(input: String) {
-    println!("Guard has visited {} locations.", count_locations(&input));
-}
-
-pub(crate) fn part_2(input: String) {
-    println!(
-        "Obstacles can be placed in {} locations.",
-        count_obstacles_that_cause_loops(&input)
-    );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_count_locations() {
-        let test_data = "....#.....
-.........#
-..........
-..#.......
-.......#..
-..........
-.#..^.....
-........#.
-#.........
-......#...";
-        assert_eq!(count_locations(test_data), 41);
+        map.push(l);
     }
 
-    #[test]
-    fn test_count_obstacles_that_cause_loops() {
-        let test_data = "....#.....
-.........#
-..........
-..#.......
-.......#..
-..........
-.#..^.....
-........#.
-#.........
-......#...";
-        assert_eq!(count_obstacles_that_cause_loops(test_data), 6);
-    }
+    (Map::new(map), guard)
 }
