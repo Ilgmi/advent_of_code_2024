@@ -17,13 +17,6 @@ fn main() {
     print!("Number of true solutions: {}", number_of_true);
 }
 
-pub enum Method {
-    Number(i128),
-    Add,
-    Mull,
-    Concat(i128, i128),
-}
-
 pub struct State {
     num_of_states: usize,
     state: Vec<u32>,
