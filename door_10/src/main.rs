@@ -1,22 +1,30 @@
 use common::read_lines;
 use std::collections::HashSet;
 use std::fs::File;
-use std::io;
 use std::io::{BufReader, Lines};
 use std::rc::Rc;
 
 fn main() {
     let lines = read_lines("door_10/input.txt").unwrap();
-    let map = Map::from(lines);
+    let searcher = TrailSearcherTwo::new();
+    let map = Map::from_file(lines, searcher);
     let trails_score = map.search_trails();
     println!("{:?}", trails_score);
 }
 
-struct Map {
+struct Map<'a> {
     map: Vec<Vec<Rc<Tile>>>,
+    searcher: Box<dyn Search + 'a>,
 }
 
-impl Map {
+impl<'a> Map<'a> {
+    fn new(search: impl Search + 'a, map: Vec<Vec<Rc<Tile>>>) -> Self {
+        Self {
+            map,
+            searcher: Box::new(search),
+        }
+    }
+
     fn get_tail(&self, tail: &Tile, direction: &Direction) -> Option<Rc<Tile>> {
         match direction {
             Direction::Top => {
@@ -62,8 +70,7 @@ impl Map {
         for row in self.map.as_slice() {
             for tile in row {
                 if tile.size == 0 {
-                    let searcher = TrailSearcher::new(tile.clone());
-                    let found = searcher.search(self);
+                    let found = self.searcher.search(self, tile.clone());
                     tailheads.push(found);
                 }
             }
@@ -104,19 +111,24 @@ enum Direction {
     Left,
 }
 
-struct TrailSearcher {
-    trail: Rc<Path>,
+trait Search {
+    fn search(&self, map: &Map, tile: Rc<Tile>) -> u32;
 }
 
-impl TrailSearcher {
-    fn new(start: Rc<Tile>) -> TrailSearcher {
-        Self {
-            trail: Rc::new(Path::new(start.clone(), None)),
-        }
-    }
+struct TrailSearcherOne {}
 
-    fn search(&self, map: &Map) -> u32 {
-        let mut queue = vec![self.trail.clone()];
+impl TrailSearcherOne {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Search for TrailSearcherOne {
+    fn search(&self, map: &Map, tile: Rc<Tile>) -> u32 {
+        let mut queue = vec![Rc::new(Path {
+            tail: tile,
+            before: None,
+        })];
         let directions = vec![
             Direction::Top,
             Direction::Right,
@@ -141,12 +153,54 @@ impl TrailSearcher {
             }
         }
 
-        possible_end.iter().count() as u32
+        possible_end.len() as u32
     }
 }
 
-impl From<&str> for Map {
-    fn from(value: &str) -> Self {
+struct TrailSearcherTwo {}
+
+impl TrailSearcherTwo {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Search for TrailSearcherTwo {
+    fn search(&self, map: &Map, tile: Rc<Tile>) -> u32 {
+        let mut queue = vec![Rc::new(Path {
+            tail: tile,
+            before: None,
+        })];
+        let directions = vec![
+            Direction::Top,
+            Direction::Right,
+            Direction::Bottom,
+            Direction::Left,
+        ];
+
+        let mut possible_end = 0;
+
+        while let Some(path) = queue.pop() {
+            if path.tail.size == 9 {
+                possible_end += 1;
+                continue;
+            }
+            let next_size = path.tail.size + 1;
+            for direction in &directions {
+                if let Some(next_tail) = map.get_tail(&path.tail, direction) {
+                    if next_size == next_tail.size {
+                        queue.push(Rc::new(Path::new(next_tail.clone(), Some(path.clone()))));
+                    }
+                }
+            }
+        }
+
+        possible_end
+    }
+}
+
+impl<'a> Map<'a> {
+    fn from_str(value: &str, searcher: impl Search + 'a) -> Self {
         let mut map = Vec::new();
         for (y, line) in value.lines().enumerate() {
             let mut row: Vec<Rc<Tile>> = Vec::new();
@@ -156,12 +210,13 @@ impl From<&str> for Map {
             }
             map.push(row);
         }
-        Self { map }
+        Self {
+            map,
+            searcher: Box::new(searcher),
+        }
     }
-}
 
-impl From<io::Lines<io::BufReader<File>>> for Map {
-    fn from(value: Lines<BufReader<File>>) -> Self {
+    fn from_file(value: Lines<BufReader<File>>, searcher: impl Search + 'a) -> Self {
         let mut map = Vec::new();
         for (y, line) in value.enumerate() {
             let mut row: Vec<Rc<Tile>> = Vec::new();
@@ -171,7 +226,10 @@ impl From<io::Lines<io::BufReader<File>>> for Map {
             }
             map.push(row);
         }
-        Self { map }
+        Self {
+            map,
+            searcher: Box::new(searcher),
+        }
     }
 }
 
@@ -190,14 +248,16 @@ mod test {
 
     #[test]
     fn should_create_map_successful() {
-        let map = Map::from(TEST_INPUT);
+        let searcher = TrailSearcherOne::new();
+        let map = Map::from_str(TEST_INPUT, searcher);
         assert_eq!(map.map.len(), 8);
         assert_eq!(map.map.first().unwrap().len(), 8);
     }
 
     #[test]
     fn should_return_tails_from_direction_successful() {
-        let map = Map::from(TEST_INPUT);
+        let searcher = TrailSearcherOne::new();
+        let map = Map::from_str(TEST_INPUT, searcher);
         let directions = vec![
             Direction::Top,
             Direction::Right,
@@ -224,18 +284,28 @@ mod test {
 
     #[test]
     fn should_find_trails() {
-        let map = Map::from(MAP_WITH_TWO_TRAILHEAD);
+        let searcher = TrailSearcherOne::new();
+        let map = Map::from_str(MAP_WITH_TWO_TRAILHEAD, searcher);
         let tail = Tile::new(3, 0, 0);
-        let searcher = TrailSearcher::new(Rc::new(tail));
-        let trails_count = searcher.search(&map);
+        let searcher = TrailSearcherOne::new();
+        let trails_count = searcher.search(&map, Rc::new(tail));
         assert_eq!(trails_count, 2);
     }
 
     #[test]
     fn should_find_all_trailhead_scores() {
-        let map = Map::from(TEST_INPUT);
+        let searcher = TrailSearcherOne::new();
+        let map = Map::from_str(TEST_INPUT, searcher);
         let score = map.search_trails();
         assert_eq!(score, 36);
+    }
+
+    #[test]
+    fn should_find_all_trailhead_scores_with_second() {
+        let searcher = TrailSearcherTwo::new();
+        let map = Map::from_str(TEST_INPUT, searcher);
+        let score = map.search_trails();
+        assert_eq!(score, 81);
     }
 
     const MAP_WITH_COMPLEX_MAP: &str = r#"..90..9
@@ -248,10 +318,11 @@ mod test {
 
     #[test]
     fn should_find_trails_for_complex_map() {
-        let map = Map::from(MAP_WITH_COMPLEX_MAP);
+        let searcher = TrailSearcherOne::new();
+        let map = Map::from_str(MAP_WITH_COMPLEX_MAP, searcher);
         let tail = Tile::new(3, 0, 0);
-        let searcher = TrailSearcher::new(Rc::new(tail));
-        let trails_count = searcher.search(&map);
+        let searcher = TrailSearcherOne::new();
+        let trails_count = searcher.search(&map, Rc::new(tail));
         assert_eq!(trails_count, 4);
     }
 }
