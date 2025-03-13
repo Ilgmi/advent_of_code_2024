@@ -69,3 +69,6 @@ dependencies = [
 [[package]]
 name = "door_09"
 version = "0.1.0"
+dependencies = [
+    "common",
+]
