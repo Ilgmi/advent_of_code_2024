@@ -13,6 +13,7 @@
       <sourceFolder url="file://$MODULE_DIR$/door_07/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/door_08/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/door_09/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/door_10/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/door_01/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
