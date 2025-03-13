@@ -118,6 +118,20 @@ impl Disc {
             })
             .sum()
     }
+
+    fn string(&self) -> String {
+        self.disc.iter().fold(String::from(""), |mut acc, block| {
+            match block {
+                Block::File(file) => {
+                    acc.push_str(&vec![file.id.to_string(); file.size].join(""));
+                }
+                Block::Empty(size) => {
+                    acc.push_str(&vec!["."; *size].join(""));
+                }
+            }
+            acc
+        })
+    }
 }
 
 impl From<&str> for Disc {
@@ -262,7 +276,7 @@ pub fn map_to_string(a: &Option<u128>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{calc_sum, compacting, compacting_2, create_disc};
+    use crate::{Disc, calc_sum, compacting, compacting_2, create_disc};
 
     const test_input: &'static str = "";
 
@@ -325,5 +339,12 @@ mod tests {
         );
         let sum = calc_sum(disc.as_slice());
         assert_eq!(sum, 2858);
+    }
+
+    #[test]
+    fn test() {
+        let mut disc = Disc::from("2333133121414131402");
+        disc = disc.defragment_two();
+        println!("{}", disc.string())
     }
 }
