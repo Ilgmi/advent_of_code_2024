@@ -4,7 +4,9 @@ use std::collections::HashSet;
 fn main() {
     let map = Map::from_file("door_12/input.txt");
     let sum = map.price();
+    let sum2 = map.price2();
     println!("Part 1: {}", sum);
+    println!("Part 2: {}", sum2);
 }
 
 struct Map {
@@ -74,7 +76,34 @@ impl Map {
                 if !processed_positions.contains(&pos) {
                     let region = self.get_region(&pos, crop);
 
-                    sum += self.calc_region_price(crop, &region);
+                    sum += self.calc_region_with_fences(crop, &region);
+
+                    for pos in region {
+                        processed_positions.insert(pos);
+                    }
+                }
+            }
+        }
+
+        sum
+    }
+
+    fn price2(&self) -> usize {
+        let mut processed_positions: HashSet<Position> = HashSet::new();
+        let mut sum = 0;
+        for (y, row) in self.crops.iter().enumerate() {
+            for (x, crop) in row.iter().enumerate() {
+                if *crop == ' ' {
+                    continue;
+                }
+                let pos = Position {
+                    x: x as i32,
+                    y: y as i32,
+                };
+                if !processed_positions.contains(&pos) {
+                    let region = self.get_region(&pos, crop);
+
+                    sum += self.calc_region_with_fences2(&region);
 
                     for pos in region {
                         processed_positions.insert(pos);
@@ -104,6 +133,46 @@ impl Map {
         positions
     }
 
+    fn calc_region_with_fences2(&self, region: &HashSet<Position>) -> usize {
+        let mut number_of_corners = 0;
+
+        for pos in region {
+            for corner in CORNERS {
+                let row = pos.next(corner.first().unwrap());
+                let col = pos.next(corner.last().unwrap());
+                let diagonal = pos.next(corner.get(1).unwrap());
+
+                if !region.contains(&row) && !region.contains(&col) {
+                    number_of_corners += 1;
+                }
+
+                if region.contains(&row) && region.contains(&col) && !region.contains(&diagonal) {
+                    number_of_corners += 1;
+                }
+            }
+        }
+        number_of_corners * region.len()
+    }
+
+    fn calc_region_with_fences(&self, crop: &char, region: &HashSet<Position>) -> usize {
+        let mut number_of_fences = 0;
+
+        for pos in region {
+            let mut same = 0;
+            for direction in &DIRECTIONS {
+                let n = pos.next(direction);
+                let n_c = self.get_by_pos(&n);
+                if let Some(n_c) = n_c {
+                    if crop == n_c {
+                        same += 1;
+                    }
+                }
+            }
+            number_of_fences += 4 - same;
+        }
+        number_of_fences * region.len()
+    }
+
     fn calc_region_price(&self, crop: &char, region: &HashSet<Position>) -> usize {
         let mut number_of_crops = 0;
         let mut number_of_perimeters = 0;
@@ -113,19 +182,27 @@ impl Map {
         for pos in region {
             processed.insert(pos.clone());
             number = 0;
+            let mut countable = false;
             for corner in CORNERS {
                 if self.has_perimeter(corner, pos, crop, &processed) {
                     number += 1;
                 }
+
+                if self.is_countable(corner, pos, crop) {
+                    countable = true;
+                }
             }
 
             if number > 0 {
-                number_of_crops += 1;
                 number_of_perimeters += number;
+            }
+
+            if countable {
+                number_of_crops += 1;
             }
         }
 
-        region.len() * number_of_perimeters
+        number_of_crops * number_of_perimeters
     }
 
     fn has_perimeter(
@@ -143,6 +220,26 @@ impl Map {
             if processed_positions.contains(&n_pos) {
                 return false;
             }
+
+            if let Some(n_crop) = n_crop {
+                if n_crop == crop {
+                    same_crop += 1;
+                    continue;
+                }
+            }
+        }
+        if same_crop == 3 {
+            return false;
+        }
+
+        true
+    }
+
+    fn is_countable(&self, corners: &[Direction], pos: &Position, crop: &char) -> bool {
+        let mut same_crop = 0;
+        for dir in corners {
+            let n_pos = pos.next(dir);
+            let n_crop = self.get_by_pos(&n_pos);
 
             if let Some(n_crop) = n_crop {
                 if n_crop == crop {
@@ -289,5 +386,19 @@ MMMISSJEEE"#;
         let map = Map::from_str(map);
         let sum = map.price();
         assert_eq!(sum, 1930);
+    }
+
+    #[test]
+    fn test_only_single_crop() {
+        let map = r#"SSSSSS
+SSSSSS
+SSSSSS
+SSSSSS
+SSSSSS
+"#;
+
+        let map = Map::from_str(map);
+        let sum = map.price();
+        assert_eq!(sum, 22 * 18);
     }
 }
